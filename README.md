@@ -39,8 +39,9 @@ this is very experimental code, it works for me
 -----------------------------------------------------
 of course the script cannot take into account all the mistakes made by the authors of nodejs applications when setting up their project
 
+-----------------------------------------------------
 
-
+un-test: test app-urls,  run it from tte directory
 
 
 

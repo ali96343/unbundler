@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+
+import asyncio
+import httpx
+import time
+import os, sys
+
+def get_urls(fnm='spy-urls.txt'):
+    if not os.path.isfile( fnm  ):
+        sys.exit( f'stop! not found {fnm}'  )
+    with open(fnm, 'r') as f:
+       return f.readlines()
+    return None
+
+
+start_time = time.time()
+
+
+async def get_p4w_url(client, url):
+        resp = await client.get(url)
+        #p4w_url = resp.json()
+
+        #return p4w_url['name']
+        if resp.status_code != 200:
+           print (url)
+           sys.exit('stop!')
+
+        return f"{resp.status_code} {url}"
+
+
+async def main():
+
+    p4w_url = 'http://localhost:8000'
+    url_list = [ f'{p4w_url}{e}' for e in get_urls() ]
+
+    async with httpx.AsyncClient() as client:
+
+        tasks = []
+        for url in url_list:
+            tasks.append(asyncio.ensure_future(get_p4w_url(client, url)))
+
+        original_p4w_url = await asyncio.gather(*tasks)
+        for p4w_url in original_p4w_url:
+            print(p4w_url)
+
+asyncio.run(main())
+print("--- %s seconds ---" % (time.time() - start_time))
