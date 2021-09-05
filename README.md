@@ -1,4 +1,4 @@
-# unbundler
+# unbun
 
 how to run  https://github.com/akveo/ngx-admin  on py4web ?
 
@@ -28,7 +28,7 @@ firefox localhost:8000/ngx
 
 unbun - is a search-replace program.
 
-some advice - disable map file generation before running the script
+some advice - disable map-file generation before running the script
 
 unbun was tested with some vue-react-angular projects 
 

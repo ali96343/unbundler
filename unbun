@@ -4,7 +4,7 @@ __author__ = "Alex Beskopilny"
 __copyright__ = "Copyright 2021, unbun: unbundle npm app and make py4web app from it"
 __credits__ = ["Alex Beskopilny"]
 __license__ = "MIT"
-__version__ = "23.03.2021"  # maybe ver 01 - it works
+__version__ = "23.03.2021"  # maybe ver 01 - it's works
 __maintainer__ = "Alex Beskopilny"
 __email__ = "ab96343@gmail.com"
 __status__ = "Dev"
@@ -31,7 +31,7 @@ try:
     #    css_minify,
     #)
 except ImportError:
-    sys.exit("pls, install bs4, jsbeautifier, cssbeautifier")
+    sys.exit("pip install bs4 jsbeautifier cssbeautifier lxml")
 
 skip_entry = (
     ".",
@@ -522,7 +522,7 @@ class Env:
                               print (e)
                 elif lx[0] == 'angular':
                     print ( """ is feature of typescript compiler, you may set in tsconfig file like below,
-                     "sourceMap": true\false """ )
+                     "sourceMap": true|false """ )
                 elif lx[0] == 'react':
                      print ( """ "build": "GENERATE_SOURCEMAP=false react-scripts build",  """  )
                      print ( """ create a file called .env and add to it: GENERATE_SOURCEMAP=false""" )
