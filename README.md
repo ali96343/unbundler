@@ -1,6 +1,8 @@
 # unbun
 
-unbunder for nodejs angular-vue-react app  
+py4web tools
+
+unbun: unbundle angular-vue-react app and make py4web app from it
 
 -----------------------------------------------------
 
@@ -18,9 +20,9 @@ cp unbun to ~/bin && chmod +x ~/bin/unbun
 
 5 cd to ngx/static/tte  && unbun
 
-The script takes a long time: 1min to 7min.
+The script takes a long time: 1min to 7min. please wait
 
-please wait
+6 run py4web 
 
 firefox localhost:8000/ngx
 
@@ -28,7 +30,7 @@ firefox localhost:8000/ngx
 
 some optional advice: disable map-file generation before running the script
 
-unbun was tested with some vue-react-angular projects 
+unbun was tested with vue-react-angular projects 
 
 examples here https://github.com/ali96343/facep4w
 
@@ -36,6 +38,8 @@ this is very experimental code, it works for me
 
 -----------------------------------------------------
 of course the script cannot take into account all the mistakes made by the authors of nodejs applications when setting up their project
+
+
 
 
 
