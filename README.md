@@ -1,6 +1,6 @@
 # unbun
 
-unbun - unbunde angular-vue-react app run it on py4web
+unbunder for nodejs angular-vue-react app  
 
 -----------------------------------------------------
 
@@ -20,15 +20,13 @@ cp unbun to ~/bin && chmod +x ~/bin/unbun
 
 5 cd to ngx/static/tte  && unbun
 
-The script takes a long time, 1 to 7 min.
+The script takes a long time, 1min to 7min.
 
 please wait
 
 firefox localhost:8000/ngx
 
 --------------------------------------------------------
-
-unbun - is a search-replace program.
 
 some advice - disable map-file generation before running the script
 
