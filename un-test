@@ -32,6 +32,8 @@ async def get_p4w_url(client, url):
     resp = await client.get(url)
     if resp.status_code != 200:
         sys.exit(f"stop! url error {url}")
+        return url
+    return '200'
 
     return f"{resp.status_code} {url}"
 
@@ -48,15 +50,18 @@ async def main():
 
     url_list = [f"{p4w_url}{e}" for e in read_urls()]
 
+    print ('len (url_list): ', len( url_list ))
+
     async with httpx.AsyncClient() as client:
 
         tasks = []
         for url in url_list:
             tasks.append(asyncio.ensure_future(get_p4w_url(client, url)))
 
-        original_p4w_url = await asyncio.gather(*tasks)
-        for p4w_url in original_p4w_url:
-            print(p4w_url)
+        checked_result = await asyncio.gather(*tasks)
+        
+        bad_url = [ e  for e in checked_result  if e != '200' ]
+        print ('bad_url_lisr: ', bad_url)
 
 
 asyncio.run(main())
