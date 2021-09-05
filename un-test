@@ -31,12 +31,9 @@ start_time = time.time()
 async def get_p4w_url(client, url):
     resp = await client.get(url)
     if resp.status_code != 200:
-        sys.exit(f"stop! url error {url}")
+        #sys.exit(f"stop! url error {url}")
         return url
     return '200'
-
-    return f"{resp.status_code} {url}"
-
 
 async def main():
  
