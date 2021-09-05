@@ -8,9 +8,7 @@ how to run  https://github.com/akveo/ngx-admin  on py4web ?
 
 cp unbun to ~/bin && chmod +x ~/bin/unbun 
 
-0 cd py4web/apps
-
-1 cp -a _scaffold ngx
+1 cd py4web/apps && cp -a _scaffold ngx
 
 2 cd ngx/static && mkdir tte && cd tte
 
@@ -20,7 +18,7 @@ cp unbun to ~/bin && chmod +x ~/bin/unbun
 
 5 cd to ngx/static/tte  && unbun
 
-The script takes a long time, 1min to 7min.
+The script takes a long time: 1min to 7min.
 
 please wait
 
