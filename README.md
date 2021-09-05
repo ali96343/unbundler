@@ -35,7 +35,8 @@ examples here https://github.com/ali96343/facep4w
 this is very experimental code, it works for me
 
 -----------------------------------------------------
-of course unbundler cannot take into account all the mistakes made by the authors of nodejs applications when setting up the project
+of course the script cannot take into account all the mistakes made by the authors of nodejs applications when setting up their project
+
 
 
 
