@@ -26,11 +26,15 @@ firefox localhost:8000/ngx
 
 --------------------------------------------------------
 
-some advice - disable map-file generation before running the script
+some optional advice: disable map-file generation before running the script
 
 unbun was tested with some vue-react-angular projects 
 
 examples here https://github.com/ali96343/facep4w
 
-this is very experimental code, but it works for me
+this is very experimental code, it works for me
+-----------------------------------------------------
+of course unbundler cannot take into account all the mistakes made by the authors of nodejs applications when setting up the project
+
+
 
