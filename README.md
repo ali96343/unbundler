@@ -5,14 +5,21 @@ how to run  https://github.com/akveo/ngx-admin  on py4web ?
 cp unbun to ~/bin && chmod +x ~/bin/unbun 
 
 0 cd /home/w3p/set1/py4web/apps
+
 1 cp -a _scaffold ngx
+
 2 cd ngx/static && mkdir tte && cd tte
+
 3 git clone https://github.com/akveo/ngx-admin && cd ngx-admin
+
 4 npm i && npm run build
+
 5 cd to ngx/static/tte  && unbun
 
 The script takes a long time, 1 to 7 min.
+
 please wait
+
 that's all
 
 firefox localhost:8000/ngx
