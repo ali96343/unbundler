@@ -1,0 +1,1212 @@
+#!/usr/bin/env python3
+
+__author__ = "Alex Beskopilny"
+__copyright__ = "Copyright 2021, unbun: unbundle npm app and make py4web app from it"
+__credits__ = ["Alex Beskopilny"]
+__license__ = "MIT"
+__version__ = "23.03.2021"  # maybe ver 01 - it works
+__maintainer__ = "Alex Beskopilny"
+__email__ = "ab96343@gmail.com"
+__status__ = "Dev"
+
+
+import os, sys, click, shutil, re, click
+import errno
+import json
+import pprint
+from datetime import timedelta
+import time
+import datetime
+from collections import OrderedDict
+
+
+try:
+    import jsbeautifier, cssbeautifier, bs4
+    #from css_html_js_minify import (
+    #    process_single_html_file,
+    #    process_single_js_file,
+    #    process_single_css_file,
+    #    html_minify,
+    #    js_minify,
+    #    css_minify,
+    #)
+except ImportError:
+    sys.exit("pls, install bs4, jsbeautifier, cssbeautifier")
+
+skip_entry = (
+    ".",
+    "node_modules",
+    "package.json",
+    "package-lock.json",
+    "gulpfile.js",
+    "webpack.js",
+    "webpack.config.js",
+    "yarn.lock",
+    "composer.json",
+    "babel.config.js",
+    "postcss.config.js",
+    "vue.config.js",
+    "jsconfig.json",
+    "bower.js",
+)
+
+node_files = []
+OPT = {}
+
+import gc
+import sys
+
+
+def get_obj_size(obj):
+    # https://stackoverflow.com/questions/13530762/how-to-know-bytes-size-of-python-object-like-arrays-and-dictionaries-the-simp
+    marked = {id(obj)}
+    obj_q = [obj]
+    sz = 0
+
+    while obj_q:
+        sz += sum(map(sys.getsizeof, obj_q))
+
+        # Lookup all the object referred to by the object in obj_q.
+        # See: https://docs.python.org/3.7/library/gc.html#gc.get_referents
+        all_refr = ((id(o), o) for o in gc.get_referents(*obj_q))
+
+        # Filter object that are already marked.
+        # Using dict notation will prevent repeated objects.
+        new_refr = {
+            o_id: o
+            for o_id, o in all_refr
+            if o_id not in marked and not isinstance(o, type)
+        }
+
+        # The new obj_q will be the ones that were not marked,
+        # and we will update marked with their ids so we will
+        # not traverse them again.
+        obj_q = new_refr.values()
+        marked.update(new_refr.keys())
+
+    return sz
+
+
+def calc_index_weight(fnm):
+    text = get_file(fnm)
+    sz_bytes = os.stat(fnm).st_size
+    index_weight = int(sz_bytes / 4)
+
+    for e in [
+        "href\s*?=|src\s*?=",
+        "href\s*?=\s*?[\"'].*?\.html[\"']",
+        "href=[\"']https?://|src=[\"']https?://",
+        "href=[\"']\/\/|src=[\"']\/\/",
+        "<ul[^>]*?>|<li[^>]*?>",
+    ]:
+        lx = re.findall(e, text)
+        index_weight += len(lx)
+
+    for e in ["@@include\\b", "href=[^<]+?<%=.+?%>|src=[^<]+?<%=.+?%>"]:
+        lx = re.findall(e, text)
+        index_weight -= 2 * len(lx)
+
+    return index_weight
+
+
+def cprint(mess="mess", color="green"):
+    # https://www.geeksforgeeks.org/print-colors-python-terminal/
+    c_fmt = "--- {}"
+    if sys.stdout.isatty() == True:
+        c = {
+            "red": "\033[91m {}\033[00m",
+            "green": "\033[92m {}\033[00m",
+            "yellow": "\033[93m {}\033[00m",
+            "cyan": "\033[96m {}\033[00m",
+            "gray": "\033[97m {}\033[00m",
+            "purple": "\033[95m {}\033[00m",
+        }
+        c_fmt = c.get(color, c_fmt)
+    print(c_fmt.format(mess))
+    return mess
+
+
+def date_now():
+    now = datetime.datetime.now()
+    mytz = time.tzname[0]
+    # mytz =  datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
+    return now.strftime("%H:%M:%S %d.%m.%Y") + f" {mytz}"
+
+
+def printProgressBar(i, max, postText="working ..."):
+    def get_sec_str(start):
+        wsec = round(time.time() - start, 0)
+
+        x = (
+            "; {} sec/items".format(str(round(wsec / i, 0)))
+            if wsec > 0.0 and i > 0
+            else ""
+        )
+        wait = (
+            "; {} sec to go".format(str(int(round(wsec / i * (max - i), 0))))
+            if wsec > 0.0 and i > 0
+            else ""
+        )
+
+        delta = datetime.timedelta(seconds=wsec)
+        return "{:0>8}".format(str(delta)) + wait
+
+    if isinstance(postText, float):
+        postText = get_sec_str(postText)
+
+    if sys.stdout.isatty() == False:
+        sys.stdout.write("")
+        sys.stdout.flush()
+        return None
+    n_bar = 10  # size of progress bar
+    if i > max:
+        max = i
+    j = i / max
+    sys.stdout.write("\r")
+    sys.stdout.write(
+        f"[{'=' * int(n_bar * j):{n_bar}s}] {int(100 * j)}%; {i}/{max}; {postText} "
+    )
+    if i == max:
+        # sys.stdout.write("\r" + ' ' * 80 +  "\033[A")
+        sys.stdout.write("\n")
+        # sys.stdout.write ("\033[A" + " " + "\033[A" + "\n")
+    sys.stdout.flush()
+    return None
+
+
+def s_and_r(ob, dd):
+    def cb_func(p_ob, p_dd):
+        for k, v in dd.items():
+            p_ob = p_ob.replace(k, v)
+        return p_ob
+
+    if isinstance(ob, (list,)):
+        return [s_and_r(e, dd) for e in ob]
+    if isinstance(ob, (tuple,)):
+        return tuple([s_and_r(e, dd) for e in ob])
+    if isinstance(ob, (dict,)):
+        return {k: s_and_r(ob[k], dd) for k in ob}
+    if isinstance(ob, (bytes, bytearray)):
+        return to_bytes(s_and_r(to_str(ob), dd))
+    if isinstance(ob, (str,)):
+        ob = cb_func(ob, dd)
+    return ob
+
+
+def copy_with_dirs(src, dest):
+    if not os.path.isfile(src):
+        errmess("stop! does not exists: %s" % src)
+    try:
+        shutil.copy(src, dest)
+    except IOError as e:
+        if e.errno != errno.ENOENT:
+            raise
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        # shutil.copy2(src, dest)
+        shutil.copy(src, dest)
+    return dest
+
+
+def write_with_dirs(filename, data, mode="w"):
+    if not len(os.path.dirname(filename)):
+        filename = os.path.join(os.getcwd(), filename)
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    with open(filename, mode) as f:
+        f.write(data)
+    return filename
+
+
+def if_not_append(elem, elem_list):
+    if elem not in elem_list:
+        elem_list.append(elem)
+    return elem
+
+
+import inspect
+
+
+def dmsg(text_s):
+    print(str(inspect.currentframe().f_back.f_lineno) + "| " + text_s)
+
+
+def errmess(mess="debug-break-point"):
+    getframe_expr = "sys._getframe({}).f_code.co_name"
+    caller = eval(getframe_expr.format(2))
+    callers_caller = eval(getframe_expr.format(3))
+    print(" --  called from: ", caller)
+    print("    ", caller, "was called from: ", callers_caller, "--")
+    cprint(mess=mess, color="red")
+    sys.exit("sys.exit")
+
+
+def rm_prefix(s, sub):
+    return s[len(sub) :] if s.startswith(sub) else s
+
+
+def rm_suffix(s, sub):
+    return s[: -len(sub)] if s.endswith(sub) else s
+
+
+def to_bytes(some):
+    if isinstance(some, str):
+        return bytes(some, "utf8")
+    return some
+
+
+def to_str(some):
+    if isinstance(some, (bytes, bytearray)):
+        return some.decode("utf-8")
+    return some
+
+
+def put_file(str_data, file_name, mode="w"):
+    with open(file_name, mode) as f:
+        f.write(str_data)
+    return file_name
+
+
+def get_file(file_name):
+    code = ""
+    try:
+        with open(file_name, "r") as f:
+            code = f.read()
+    except IOError:
+        print("File not accessible: ", file_name)
+    return code
+
+
+def find(base,):
+    hits = []
+
+    def find_in_dir_subdir(direc):
+        # content = os.scandir(direc)
+        content = sorted(os.scandir(direc), key=lambda t: t.stat().st_mtime)
+        for entry in content:
+            if entry.name.lower().startswith(skip_entry):
+                if entry.is_dir():
+                    node_files.append(os.path.join(direc, entry.name + "/"))
+                else:
+                    node_files.append(os.path.join(direc, entry.name))
+                continue
+
+            if entry.is_file():
+                hits.append(os.path.join(direc, entry.name))
+
+            elif entry.is_dir():
+                try:
+                    find_in_dir_subdir(os.path.join(direc, entry.name))
+                except IOError:
+                    print("Permission error  " + os.path.join(direc, entry.name))
+                    continue
+                except UnicodeDecodeError:
+                    print("Could not resolve " + os.path.join(direc, entry.name))
+                    continue
+
+    find_in_dir_subdir(base)
+
+    return hits
+
+
+def find_file(base, fnm="index.html"):
+    hits = []
+
+    def find_in_dir_subdir(direc):
+        content = os.scandir(direc)
+        for entry in content:
+            # if entry.name.lower().startswith(skip_entry):
+            #    continue
+
+            if entry.is_file() and entry.name == fnm:
+                hits.append(os.path.join(direc, entry.name))
+
+            elif entry.is_dir():
+                try:
+                    find_in_dir_subdir(os.path.join(direc, entry.name))
+                except IOError:
+                    print("Permission error  " + os.path.join(direc, entry.name))
+                    continue
+                except UnicodeDecodeError:
+                    print("Could not resolve " + os.path.join(direc, entry.name))
+                    continue
+
+    find_in_dir_subdir(base)
+
+    return hits
+
+
+def get_build_dir(fdb, dir_index):
+
+    dir_nm = rm_suffix(dir_index, "index.html")
+    l_build = [e for e in fdb if e.startswith(dir_nm)]
+    html_l = [e for e in l_build if e.endswith(".html")]
+
+    if len(html_l) > 1:
+        errmess("multiple html's ")
+    return l_build
+
+
+def get_dir(l, dnm):
+    for e in l:
+        if e.endswith(dnm):
+            return e
+    return ""
+
+
+def get_subdir(l, index_dir):
+    sub_dirs = {}
+    sub_dirs_list = []
+    dir_nm = rm_suffix(index_dir, "index.html")
+    dir_nmx = dir_nm.split(os.sep)
+
+    # print(dir_nmx[-2])
+    # print('--------------- ', dir_nmx[-3])
+    root_files = []
+    for e in l:
+        x = rm_prefix(e, dir_nm)
+        if not "/" in x and not x.endswith((".un", ".map", ".des")):
+            root_files.append(x)
+        xnm = x.split("/")
+        if len(xnm) > 1:
+
+            sub_dirs[xnm[0]] = sub_dirs[xnm[0]] + 1 if xnm[0] in sub_dirs else 1
+            not xnm[0] in sub_dirs_list and sub_dirs_list.append(xnm[0])
+    return dir_nmx[-3], sub_dirs, root_files
+
+
+def tru_path(l, ind):
+    prefix = rm_suffix(ind, "index.html")
+    l = [e for e in l if e.startswith(prefix)]
+    # print(l )
+    l2 = [rm_prefix(e, prefix) for e in l]
+    # print (l2)
+    return l, l2
+
+
+def dirs_permutation(
+    vD_root, vD_root_s, vA_root_s, files_in_root, dbg=False, dist_name="unk"
+):
+    files_in_root = [
+        e for e in files_in_root if not e.endswith((".un", ".des", ".map"))
+    ]
+    if isinstance(vD_root, (list, tuple)):
+        vD_root = [e for e in vD_root if not e == "/"]
+        vD_root = list(set(vD_root))
+        vD_root = vD_root[0]
+
+    vD_root_0 = vD_root.replace("/", "")
+    vD_root = f"/{vD_root_0}/"
+    vA_root = "/".join(vA_root_s.split("/")[:2]) + "/"
+    vA_root_0 = vA_root.replace("/", "")
+
+    vD_root_s = [e.replace("/", "") for e in vD_root_s]
+    res = OrderedDict()  # {}
+    print("permut_  ", dist_name)
+    for e in vD_root_s:
+        if dist_name == "angular":
+            res[f"{e}/"] = f"/{vA_root_s[1:]}{e}/"
+        else:
+            res[f"{e}/"] = f"{vA_root_s[1:]}{e}/"
+        res[f"../../../{e}/"] = f"{vA_root_s}{e}/"
+        res[f"../../{e}/"] = f"{vA_root_s}{e}/"
+        res[f"../{e}/"] = f"{vA_root_s}{e}/"
+        res[f"./{e}/"] = f"{vA_root_s}{e}/"
+        res[f"/{e}/"] = f"{vA_root_s}{e}/"
+        res[f"{vD_root}{e}/"] = f"{vA_root_s}{e}/"
+
+        res[f"{vD_root[1:]}{e}"] = f"{vA_root_s[1:]}{e}"  # NEW - naked
+        res[f"{e}"] = f"{vA_root_s[1:]}{e}"  # NEW -naked
+
+    for e in files_in_root:
+        res[f"{e}"] = f"{vA_root_s}{e}"
+        res[f"../../../{e}"] = f"{vA_root_s}{e}"
+        res[f"../../{e}"] = f"{vA_root_s}{e}"
+        res[f"../{e}"] = f"{vA_root_s}{e}"
+        res[f"./{e}"] = f"{vA_root_s}{e}"
+        res[f"/{e}"] = f"{vA_root_s}{e}"
+        res[f"{vD_root}{e}"] = f"{vA_root_s}{e}"
+        res[f"{vD_root[1:]}{e}"] = f"{vA_root_s[1:]}{e}"  # NEW - naked
+
+    res[vD_root] = "/"
+    res[vD_root_0] = vA_root_0
+    res[f"webpackJsonp{vD_root_0}"] = f"webpackJsonp{vA_root_0}"
+
+    # for e in res:
+    #    print(e, ' ', res[e])
+
+    print("len(permut_dict): ", len(res))
+    # dbg= True
+    if dbg == True:
+        print("dir_permutation dbg:")
+        _ = [print(e) for e in [vA_root, vA_root_s, vD_root, vD_root_s]]
+        _ = [print(e, "  ", res[e]) for e in res]
+        sys.exit("stop")
+    return res
+
+
+class Env:
+    def read_git_file(Z, root_dir):
+        text = get_file(f"{root_dir}/.git/config")
+        lx = re.findall("^\s*url\s*\=\s*([-\.\w\/\:]+)\n", text, re.MULTILINE)
+        if len(lx):
+            with open("/tmp/unbun.urls", "a") as myfile:
+                myfile.write(lx[0] + "\n")
+
+        return lx[0] if len(lx) else ""
+
+    def calc_env(Z, sign):
+        cur_dir = os.getcwd()
+        #if '/tte/' in cur_dir:
+        #    penv = cur_dir.split('/tte/')
+        #    if len ( penv ) == 2:
+        #        np= penv[0] + '/tte/'
+        #        if os.path.isdir( np  ):
+        #            os.chdir(np)
+        #            cprint("changed_dir to /tte", color="red")
+        #elif os.path.isdir( cur_dir + '/tte' ):
+        #     os.chdir( cur_dir + '/tte'  )
+        #     cprint("changed_dir to /tte", color="red")
+        lx = ["../../templates", "../../controllers.py", "../../models.py", "../tte"]
+        bool_res = all([os.path.exists(e) for e in lx])
+        if not (sign in cur_dir or bool_res):
+            errmess("bad env! %s" % cur_dir)
+        return cur_dir
+
+    def report(Z,):
+        # cprint("unbun report", color="yellow")
+        cprint(Z.app_name)
+        print(Z.git_src)
+        print("Z.index_dir:  ", Z.index_dir)
+        print("Z.dirs_root:  ", Z.dirs_root)
+        print("Z.dirs_static:", Z.dirs_static)
+        print("len(Z.list_root_files):", len(Z.list_root_files))
+        # errmess('!! stop')
+        # print("Z.list_root_files:", Z.list_root_files)
+        # for e in Z.__dict__:
+        #    print (e,' ', Z.__dict__[e])
+
+    def __call__(Z,):
+        Z.report()
+        return Z
+
+    def find_dist_name(Z, ind_file):
+        l = ind_file.split(os.sep)
+        base_name = ""
+        while len(l):
+            x = l.pop()
+            if x.startswith(("index.html", "dist", "build", "built")):
+                continue
+            else:
+                base_name = x
+                break
+        if len(base_name):
+            # print ('found base_name: ', base_name)
+            return base_name
+        errmess("can not find dist_name")
+
+    def find_package_json(Z,):
+        lx = find_file(Z.cwd, "package.json")
+        xx = [e for e in lx if not "node_modules" in e]
+
+        if len(xx) > 0:
+            text = get_file(xx[0])
+            lx = re.findall("angular|vue|react", text, re.MULTILINE)
+            if len(lx) > 0:
+                cprint(f"{lx[0].upper()}", color="yellow")
+                if lx[0] == 'vue':
+                    print (" module.exports = { productionSourceMap: false }; " )
+                    vue_cfg = "vue.config.js"
+                    ly = find_file(Z.cwd, vue_cfg  )
+                    if len( ly ):
+                        for e in ly:
+                            if not 'node_modules' in e:
+                              print (e)
+                elif lx[0] == 'angular':
+                    print ( """ is feature of typescript compiler, you may set in tsconfig file like below,
+                     "sourceMap": true\false """ )
+                elif lx[0] == 'react':
+                     print ( """ "build": "GENERATE_SOURCEMAP=false react-scripts build",  """  )
+                     print ( """ create a file called .env and add to it: GENERATE_SOURCEMAP=false""" )
+
+                return lx[0]
+        cprint("not found package.json", color="red")
+        return "unk_framework"
+
+    def init_dirs(Z,):
+        lx = find_file(Z.cwd, "index.html")
+        for e in lx:
+            if any([d in e for d in ("/dist/", "/build/", "/built/")]):
+                Z.dist_index = e
+                l = e.split(os.sep)
+                Z.dist_dir = (os.sep).join(l[0:-1])
+                Z.dist_common_prefix = rm_suffix(Z.dist_index, "index.html")
+                Z.base_dist_name = Z.find_dist_name(Z.dist_index)
+        for e in [Z.dist_index, Z.dist_dir, Z.dist_common_prefix, Z.base_dist_name]:
+            if e is None or len(e) == 0:
+                errmess("bad dist !!!")
+
+    def __init__(Z, sign="/888/"):
+        Z.cwd = os.getcwd()
+        Z.dist_index = None
+        Z.dist_dir = None
+        Z.dist_common_prefix = None
+        Z.base_dist_name = None
+        Z.dist_name = Z.find_package_json()
+        Z.init_dirs()
+        # print(" {} {} {}".format( Z.dist_index, Z.dist_dir, Z.dist_common_prefix  ))
+        # print ( Z.base_dist_name )
+        # ----------------------------------------------
+        Z.cur_dir = Z.calc_env(sign)
+
+        Z.app_name = "myapp" if sign in Z.cur_dir else os.getcwd().split(os.sep)[-3]
+        Z.in_tte = True if not sign in Z.cur_dir else False
+
+        Z.fdb = sorted(find(Z.cur_dir), key=len)
+        Z.ndb = sorted(node_files, key=len)
+
+        # print (Z.ndb)
+        index_dir = (
+            Z.dist_index
+        )  #  get_dir(Z.fdb, ("dist/index.html", "build/index.html", "built/index.dir"))
+
+        if not len(index_dir) and not index_dir.endswith("index.html"):
+            errmess("not found build/index.html or dist/index.html!")
+        Z.index_dir = rm_suffix(index_dir, "index.html")
+        Z.common_prefix = rm_suffix(index_dir, "index.html")
+        l_build = get_build_dir(Z.fdb, index_dir)
+        # FIXME Z.dirs_root
+        Z.dirs_root, Z.dirs_static, Z.list_root_files = get_subdir(l_build, index_dir)
+        Z.dirs_root = Z.base_dist_name
+        Z.git_src = Z.read_git_file(Z.dirs_root)
+
+        # ----------------------------------------------
+        Z.app_root = f"/{Z.app_name}/"
+        Z.app_public = f"/{Z.app_name}/static/tte/"
+
+        Z.big_permut_dict = dirs_permutation(
+            Z.dirs_root,
+            Z.dirs_static,
+            Z.app_public,
+            Z.list_root_files,
+            dbg=False,
+            dist_name=Z.dist_name,
+        )
+
+        # ------------------------------------------------------------
+
+        Z.build_files, Z.app_files = tru_path(Z.fdb, index_dir)
+        return None
+
+
+class Des:
+    def __init__(Z, env):
+        Z.env = env
+        Z.html_list = []
+        Z.fnd_cache = []
+        Z.maybe_router = set()
+        Z.maybe_external = set()
+        Z.sr_cache = {}
+        Z.new_counter = 0
+        Z.skip_space_counter = 0
+        Z.suspi = {
+            ".": {".html": 0, ".json": 0, ".css": 0, ".js": 0},
+            "./": {".html": 0, ".json": 0, ".css": 0, ".js": 0},
+        }
+        Z.cnt_permut = {
+            "in_permut": 0,
+            "in_sr_cache": 0,
+            "fnd_prefix": 0,
+            "fnd_suffix": 0,
+        }
+        Z.for_test = set()
+
+    # def add2stat(Z, e, n_dict):
+    #    n_dict[e] = n_dict[e] + 1 if e in n_dict else 1
+    #    return e
+
+    def check_fnm_fdb(Z, value, fnm_ext, dbg=False):
+        if value in Z.suspi:
+            Z.suspi[value][fnm_ext] += 1
+
+        if value in Z.sr_cache:
+            Z.cnt_permut["in_sr_cache"] += 1
+            return Z.sr_cache[value]
+
+        m0 = re.search("^\/[\w]+[\w\/]+$", value)
+        if m0:
+            dbg and print(m0.string)
+            Z.maybe_router.add(m0.string)
+
+        m0 = re.search("^\/\/[\w]+[-\.\w\/]+$|^https?\:[-\w\.\/]+$", value)
+        if m0:
+            dbg and print(m0.string)
+            Z.maybe_external.add(m0.string)
+
+        permut_dict = Z.env.big_permut_dict
+        if value in permut_dict:
+            Z.cnt_permut["in_permut"] += 1
+            if dbg == True:
+                print("in dict !")
+                print(value, " ", permut_dict[value])
+            Z.sr_cache[value] = permut_dict[value]
+            Z.sr_cache[permut_dict[value]] = None
+            return Z.sr_cache[value]
+
+        for e in Z.env.app_files:
+            if value.endswith(e):
+                for ee in permut_dict:
+                    if value.startswith(ee):
+                        new_val = value.replace(ee, permut_dict[ee])
+                        if dbg == True:
+                            print()
+                            print("          value: ", value)
+                            print("      new_value: ", new_val)
+                        Z.sr_cache[value] = new_val
+                        Z.sr_cache[new_val] = None
+                        Z.cnt_permut["fnd_prefix"] += 1
+                        return Z.sr_cache[value]
+        for e in permut_dict:
+            if value.startswith(e):
+
+                new_val = value.replace(e, permut_dict[e])
+                if dbg == True:
+                    print()
+                    print("      val: ", value)
+                    print("  new_val: ", new_val)
+
+                Z.sr_cache[value] = new_val
+                Z.sr_cache[new_val] = None
+                Z.cnt_permut["fnd_suffix"] += 1
+                return Z.sr_cache[value]
+
+        Z.sr_cache[value] = None
+        return Z.sr_cache[value]
+
+    def parse_res(Z, res, fnm_ext, dbg=False):
+
+        for e in [
+            re.compile("((?:[\:\=\+\,\[\(\{\?][\s\n]*\s*)\\\\?['\"])(.*?)(\\\\?['\"])"),
+            re.compile("(\\burl\s*\(['\"]?)(.*?)(['\"]?\))"),
+            re.compile('(["])([^"]*?)(["])'),
+            re.compile("(['])([^']*?)(['])"),
+        ]:
+
+            def f2_sub(m):
+                if not re.search("[\s\,\;\<\>]", m.group(2)) is None:
+                    Z.skip_space_counter += 1
+                    return m.group(0)
+
+                x = Z.check_fnm_fdb(m.group(2), fnm_ext)
+                if not x is None:
+                    if dbg == True:
+                        print()
+                        print("pars_m0: ", m.group(0))
+                        print("    res: ", m.group(1) + x + m.group(3))
+                    Z.new_counter += 1
+                    return m.group(1) + x + m.group(3)
+                # print ( m.group(0)  )
+                # print ('--'*20)
+                return m.group(0)
+
+            res = re.sub(e, f2_sub, res)
+
+        if len(re.findall("<!DOCTYPE\s+html>", res, re.IGNORECASE)):
+            nn = 0
+            res, nn = re.subn('<base\s+href\="[^>].*?>s*\\n', "", res)
+            if nn == 1:
+                res = re.sub(
+                    "<head>", f'<head>\\n  <base href="{Z.env.app_public}">', res
+                )
+
+        return res
+
+    def rm_nosript(Z, slines):
+
+        now = date_now()
+
+        slines = re.sub(
+            "(<title>)([^<]+?)(</title>)",
+            "\g<1>AI-biorex, %s\g<3>" % now,
+            slines,
+            re.DOTALL,
+        )
+        if len(Z.env.git_src):
+            slines = re.sub(
+                "</title>",
+                "</title>\\n  <!-- py4web app from %s -->" % Z.env.git_src,
+                slines,
+                re.DOTALL,
+            )
+
+        return re.sub(
+            "(\s*)(<noscript>\s*\n.*?\s*</noscript>\s*)(\n)",
+            "\g<1><!-- AI-biorex, %s -->\g<3>" % now,
+            slines,
+            re.DOTALL,
+        )
+
+    def des_jscss_script(Z, res):
+
+        crex_pat = re.compile(
+            "(\s*<script>\s*)(.*?)(\s*</script>)",
+            re.MULTILINE | re.DOTALL | re.IGNORECASE,
+        )
+        crex_pat2 = re.compile(
+            "(\s*<script[^>]+?>\s*)(.*?)(\s*</script>)",
+            re.MULTILINE | re.DOTALL | re.IGNORECASE,
+        )
+        rex_style = re.compile(
+            "^(\s*<style[^>]*?>)(.*?)(\s*</style>)",
+            re.MULTILINE | re.DOTALL | re.IGNORECASE,
+        )
+
+        def script_replace(m):
+            # print (m.group(2))
+            script_res = ""
+            # if b'json' in m.group(1):
+            #     parsed = json.loads( to_str( m.group(2) ) )
+            #     script_res = json.dumps(parsed, indent=4, sort_keys=True)
+            # else:
+            opts = jsbeautifier.default_options().indent_size = 2
+            script_res = jsbeautifier.beautify(to_str(m.group(2)), opts)
+            return m.group(1) + script_res + m.group(3)
+
+        res = crex_pat.sub(script_replace, res)
+        res = crex_pat2.sub(script_replace, res)
+
+        def style_replace(m):
+            style_res = ""
+            style_res = cssbeautifier.beautify(to_str(m.group(2)))
+            return m.group(1) + style_res + m.group(3)
+
+        res = rex_style.sub(style_replace, res)
+        res = Z.rm_nosript(res)
+        # lx = re.findall('(<script.*?>)(\s*?|\n*?)(</script>)', res)
+        # if len(lx):
+        #       print (lx)
+        res = re.sub("(<script.*?>)(\s*?|\n*?)(</script>)", "\g<1>\g<3>", res)
+        res = re.sub("(<div.*?>)(\s*?|\n*?)(</div>)", "\g<1>\g<3>", res)
+        res = re.sub("(<app-root.*?>)(\s*?|\n*?)(</app-root>)", "\g<1>\g<3>", res)
+
+        return res
+
+    def des_files(Z, fnm):
+        code = get_file(fnm)
+
+        res = ""
+        opts = jsbeautifier.default_options().indent_size = 2
+        if fnm.endswith(".js"):
+            res = jsbeautifier.beautify(code, opts)
+        elif fnm.endswith(".css"):
+            res = cssbeautifier.beautify(code)
+        elif fnm.endswith(".html"):
+            res = bs4.BeautifulSoup(code, "lxml").prettify()
+            res = Z.des_jscss_script(res)
+        elif fnm.endswith((".json", ".map")):
+            res = jsbeautifier.beautify(code, opts)
+        else:
+            return code
+        # https?://\S+\.(jpe?g|png|gif)
+        return res
+
+    def mk_un_files(Z, des_map=True):
+        start = time.time()
+        if des_map == True:
+            for i, e in enumerate(Z.env.build_files):
+                if e.endswith((".map.un", ".des")):
+                    if os.path.isfile(e):
+                        os.remove(e)
+        Z.env.build_files = [
+            e for e in Z.env.build_files if not e.endswith((".map", ".map.un", ".des"))
+        ]
+
+        lx = Z.env.cwd.split("/")
+        p4w_pref = "/".join(lx[0:-3])
+
+        files_count = len(Z.env.build_files)
+        for i, e in enumerate(Z.env.build_files, 1):
+
+            dst_file_1 = rm_prefix(e, Z.env.common_prefix)
+            dst_file = os.path.join(Z.env.cwd, dst_file_1)
+            if e.endswith((".html", ".js", ".css", ".json")):
+                e_ext = os.path.splitext(e)[1]
+                res = Z.des_files(e)
+                res = Z.parse_res(res, e_ext)
+                if dst_file.endswith(".html"):
+                    bn_dst = os.path.basename(dst_file)
+                    if dst_file in Z.html_list:
+                        print(f"alarm! {bn_dst} exists in root!")
+
+                    Z.html_list.append(dst_file)
+                    # res = html_minify(res)
+                # if e.endswith('.js'):
+                #    #res = js_minify(res)
+                #    res = remove_comments(res)
+                #    res = re.sub( '^[\s]*$\n', '', res )
+                # if e.endswith('.css'):
+                #    res = css_minify(res)
+                write_with_dirs(dst_file, res)
+            else:
+                copy_with_dirs(e, dst_file)
+
+            if dst_file.endswith(".html"):
+                dst_file = dst_file.replace("/static/tte", "")
+            Z.for_test.add(rm_prefix(dst_file, p4w_pref))
+
+            printProgressBar(i, files_count, postText=start)
+
+        return None
+
+    def cache_stat(Z,):
+        s = Z.env.app_public
+        l = s.split(os.sep)
+        name = (os.sep).join(l[:2])
+        Cnt = {
+            "root": name,
+            "pub": s,
+            "not_none": 0,
+            "root_cnt": 0,
+            "pub_cnt": 0,
+            "none_cnt": 0,
+        }
+        # cprint(name)
+        for k, v in Z.sr_cache.items():
+            if v is None:
+                Cnt["none_cnt"] += 1
+
+            if k.startswith(name):
+                Cnt["root_cnt"] += 1
+
+            if k.startswith(s):
+                Cnt["pub_cnt"] += 1
+
+            if not v is None:
+                if k != v:
+                    Cnt["not_none"] += 1
+
+        pp = pprint.PrettyPrinter(indent=4)
+        pp.pprint(Cnt)
+        pp.pprint(Z.cnt_permut)
+        # pp.pprint(Z.suspi)
+
+    def mk_test_file(Z,):
+        fnm = "spy-urls.txt"  # os.path.basename(__file__)
+        put_file("\n".join(Z.for_test), fnm)
+        cprint(f"wrote {len(Z.for_test)} urls to: {fnm}", "yellow")
+
+    def __call__(Z,):
+        Z.mk_un_files()
+        print("len ( Z.maybe_router )", len(Z.maybe_router))
+        cprint("maybe route suffix or prefix!", color="yellow")
+        l = list(Z.maybe_router)
+        # lsorted = sorted(l,key=lambda x: int(len(x)))
+        lsorted = sorted(l, key=lambda x: int(len(x.split("/")[1])))
+        # lsorted = sorted(l,key=lambda x: int(len(os.path.splitext(x)[0])))
+        print(lsorted)
+        print("len( Z.maybe_external )", len(Z.maybe_external))
+        print("Z.new_counter: ", Z.new_counter)
+        print("Z.skip_space_counter: ", Z.skip_space_counter)
+        # print("len(Z.sr_cache): ", len(Z.sr_cache))
+        # print("sizeof(Z.sr_cache): ", sys.getsizeof(Z.sr_cache))
+        # print("get_obj_size(Z.sr_cache): ", get_obj_size(Z.sr_cache))
+        Z.cache_stat()
+        Z.mk_test_file()
+
+
+class View:
+    def __init__(Z, env):
+        Z.path = "../../templates/" if env.in_tte else "tmp_p4w/templates/"
+
+
+class Model:
+    def __init__(Z, env):
+        Z.path = "../../models.py" if env.in_tte else "tmp_p4w/models.py"
+
+        Z.user_table = """
+from .common import db, Field
+from pydal.validators import *
+from py4web.utils.populate import populate 
+from .settings import APP_NAME
+
+#with python cli
+#import pydal
+#from py4web import *
+#from apps.APPNM.models import db
+
+my_app_name = "APPNM"
+
+if not db(db.auth_user).count():
+    body = {
+        "username": "nil",
+        "email": "nil@nil.com",
+        "password": str(CRYPT()("xyz12345")[0]),
+        #"password": str(pydal.validators.CRYPT()("xyz12345")[0]),
+        "first_name": "MainUser",
+        "last_name": "MainUserLast",
+    }
+    db.auth_user.insert(**body)
+    db.commit()
+
+"""
+        Z.user_table = s_and_r(Z.user_table, {"APPNM": env.app_name})
+
+    def gen_test_tbl(Z, *args, name="test_table", size=10):
+        tbl = ["db.define_table(", f"    '{name}',"]
+        tbl += [f"    Field( 'f{i}', '{e}', label='l{i}')," for i, e in enumerate(args)]
+        tbl += ["    )"]
+        tbl += ["db.commit()", ""]
+        tbl += [
+            f"if not db(db.{name}).count():",
+            f"    populate(db.{name}, n={size})",
+            "    db.commit()" "",
+        ]
+        return "\n".join(tbl)
+
+    def __call__(Z,):
+        tbl_text = Z.gen_test_tbl("string", "string", "string")
+        put_file(Z.user_table + tbl_text, Z.path)
+
+
+class Ctrl:
+    def __init__(Z, env, view):
+        #
+        Z.view = view
+        Z.env = env
+        Z.header = """
+import os
+from py4web import action, request, abort, redirect, URL, Field, HTTP
+from py4web.utils.form import Form, FormStyleBulma
+from py4web.utils.grid import Grid
+from py4web.utils.publisher import Publisher, ALLOW_ALL_POLICY
+from pydal.validators import IS_NOT_EMPTY, IS_INT_IN_RANGE, IS_IN_SET, IS_IN_DB
+from yatl.helpers import INPUT, H1, HTML, BODY, A
+from py4web.core import Template, Reloader
+import yatl
+
+
+from .common import db, session, T, cache, authenticated, unauthenticated, auth
+from .settings import APP_NAME
+from py4web.core import bottle
+
+## exposes services necessary to access the db.thing via ajax
+publisher = Publisher(db, policy=ALLOW_ALL_POLICY)
+
+#
+# AI-biorex, DATE
+# src: GITURL 
+#
+
+"""
+        Z.body = """
+@action('CTRL', method=["GET", "POST"] )
+@action('static/tte', method=["GET", "POST"] )
+@action('static/tte/', method=["GET", "POST"] )
+@action('static/tte/CTRL', method=["GET", "POST"] )
+@action.uses(Template('VIEW', delimiters='QU1 QU2',), db, session, T, )
+#
+def CTRL(param=None):
+   ctrl_info= "ctrl: CTRL, view: VIEW"
+   if not param is None:
+       print (param)
+   return locals()
+
+"""
+
+        Z.body_js = """
+#
+@action('JSFILE', method=["GET", "POST"] )
+@action.uses(Template('JSFILE', delimiters='[%[ ]]',), db, session, T, )
+#
+def x6(param=None):
+   print ('JSFILE: ', request.path)
+   return locals()
+#
+"""
+        Z.end = """
+   return locals()
+"""
+        Z.rest = """
+from pydal.restapi import RestAPI, Policy
+
+policy = Policy()
+
+policy.set('*', 'GET', authorize=True, allowed_patterns=['*'])
+policy.set('*', 'PUT', authorize=True)
+policy.set('*', 'POST', authorize=True)
+policy.set('*', 'DELETE', authorize=True)
+
+@action('api/<tablename>/', method=["GET", "POST", "PUT", "DELETE"])
+@action('api/<tablename>/<rec_id>', method=["GET", "POST", "PUT", "DELETE"])
+def api(tablename, rec_id=None):
+    return RestAPI(db, policy)(request.method,
+                               tablename,
+                               rec_id,
+                               request.GET,
+                               request.POST
+                               )
+#
+# curl -X  GET   http://localhost:8000/APPNM/api/test_table/
+# curl -X  GET   http://localhost:8000/APPNM/api/test_table/9
+# curl -X DELETE  http://localhost:8000/APPNM/api/test_table/2
+# curl -X POST -d 'f0=1111111&f1=2222222222&f2=33333333333' http://localhost:8000/APPNM/api/test_table/
+# curl -X PUT -d 'f0=1111111&f1=2222222222&f2=33333333333' http://localhost:8000/APPNM/api/test_table/19
+# curl -X POST -d f0=1111111   -d f1=2222222222 -d f2=8888888888  http://localhost:8000/APPNM/api/test_table/
+#
+#  pip install httpie
+#  http         localhost:8000/APPNM/api/test_table/
+#  http -f POST localhost:8000/APPNM/api/test_table/ f0=111111 f1=2222222 f2=333333
+#  http -f DELETE localhost:8000/APPNM/api/test_table/2
+#  http -f PUT localhost:8000/APPNM/api/test_table/2 f0=111111 f1=2222222 f2=333333
+
+"""
+
+        Z.bottle = """
+
+#Glb= {'debug': True, 'my_app_name': APP_NAME, 'tte_path': '/static/tte'}
+Glb= {'debug': True, 'my_app_name': "APPNM", 'tte_path': '/static/tte'}
+
+
+def before_request():
+    bad_path= '/APPNM/static/tte/APPNM/static/tte/'
+    bad_root='/APPNM/APPNM/'
+    if bottle.request.environ["PATH_INFO"].startswith(bad_path):
+        bottle.request.environ["PATH_INFO"]= bottle.request.environ["PATH_INFO"].replace( '/APPNM/static/tte', '', 1)
+        print ( f'before_request:    /APPNM: goto {bottle.request.environ["PATH_INFO"]}' )
+    elif bottle.request.environ["PATH_INFO"].startswith(bad_root):
+        bottle.request.environ["PATH_INFO"]= bottle.request.environ["PATH_INFO"].replace( '/APPNM', '', 1)
+        print ( f'before_request:    /APPNM: goto {bottle.request.environ["PATH_INFO"]}' )
+
+#bottle.default_app().add_hook( "before_request", before_request )
+
+
+@bottle.error(404)
+def error404(error):
+
+    func_mess = []
+
+    def check_rule(maybe_app_root):
+        for e in Reloader.ROUTES:
+            if ('rule' in e ) and ( e["rule"] == maybe_app_root) :
+                Glb["debug"] and func_mess.append(f"     found_rule: {e['rule']}")
+                return True
+        return False
+
+    location = "/" + Glb["my_app_name"]
+    lx = bottle.request.path.split("/", 2)
+
+    if len(lx) >= 2 and check_rule("/" + lx[1]):
+
+        location = "/" + lx[1]
+        files_prefix = location + Glb["tte_path"]
+
+        location_2x = location + location + "/"
+        files_prefix_2x = files_prefix + files_prefix + "/"
+
+        def rm_bad_prefix(bad_prefix):
+            new_location = bottle.request.path.replace(bad_prefix, "", 1)
+            Glb["debug"] and func_mess.append(f"     rm_bad_prefix: {bad_prefix}")
+            return new_location
+
+        if bottle.request.path.startswith(files_prefix_2x):
+            if len(bottle.request.path) > len(files_prefix_2x):
+                location = rm_bad_prefix(files_prefix)
+
+        elif bottle.request.path.startswith(location_2x):
+            if len(bottle.request.path) > len(location_2x):
+                location = rm_bad_prefix(location)
+
+
+    if Glb["debug"]:
+        debug_mess = [  f"404  app=/{Glb['my_app_name']}, err_path={bottle.request.path}",
+                        f"     info: {error}", ]
+        if len(func_mess):
+            debug_mess += func_mess
+        debug_mess.append(f"     goto_new_path: {location}\\n")
+        print("\\n".join(debug_mess))
+
+    bottle.response.status = 303
+    bottle.response.set_header("Location", location)
+
+"""
+        #
+        Z.path = "../../controllers.py" if env.in_tte else "tmp_p4w/controllers.py"
+        Z.app = os.getcwd().split(os.sep)[-3] if env.in_tte else "mytmp_app"
+        return None
+
+    def __call__(Z, lhtml):
+
+        myheader = s_and_r(Z.header, {"GITURL": Z.env.git_src, "DATE": date_now()})
+        controllers = [myheader]
+        for src in lhtml:
+            bn = os.path.basename(src)
+            bn0 = os.path.splitext(bn)[0]
+            controllers.append(
+                s_and_r(Z.body, {"CTRL": bn0, "VIEW": bn, "QU1": "[%[", "QU2": "]]"})
+            )
+            copy_with_dirs(src, os.path.join(Z.view.path, bn))
+        controllers.append(s_and_r(Z.bottle, {"APPNM": Z.env.app_name}))
+        controllers.append(s_and_r(Z.rest, {"APPNM": Z.env.app_name}))
+        put_file("\n".join(controllers), Z.path)
+
+
+class Linker:
+    def __init__(Z,):
+        Z.env = Env()()
+        Z.des = Des(Z.env)
+        Z.view = View(Z.des.env)
+        Z.html = Z.des.html_list
+        Z.ctrl = Ctrl(Z.des.env, Z.view)
+        Z.model = Model(Z.des.env)
+
+    def __call__(Z,):
+        Z.des()
+        Z.model()
+        Z.ctrl(Z.html)
+
+        # Z.cp_controllers()
+
+
+@click.command()
+@click.option("--verbose", "-v", default="", help="Verbose output")
+@click.option("--spy", "-s", default="", help="Find app routes: /admin/user ... etc")
+@click.option(
+    "--externals", "-r", default="", help="Search app for externals https://xxx..."
+)
+@click.option("--fp", "-f", default="", help="file parse")
+def cli(verbose, spy, externals, fp):
+    """
+    unbun - converter:  npm bundle to py4web app
+    (npm bundle is .../dist/index.html   or .../build/index.html  with assets and js files)
+    ( expected dir   myapp/static/tte/github-app-name/dist/   and index.html in it )
+    usage:
+    0 create new py4web myapp from _scaffold
+    1 mkdir myapp/static/tte && cd myapp/static/tte
+    2 git clone some github.com/nodejs app with .... /dist/index.html or .../build/index.html
+    3 build nodejs app:  npm install, npm run build  or yarn && yarn run build ... etc
+    4 check if exists .../dist/index.html or .../build/index.html
+    5 cd myapp/static/tte   &&  unbun 
+    6 unbun works slow - up to 10 min, and like 1GB RSS ( for big angular app )
+    7 only one html file  must exist in .../dist or .../build directory
+    8 unbun does not work outside tte directory 
+    """
+    import time
+    import resource
+
+    start = time.time()
+
+    Linker()()
+
+    wsec = round(time.time() - start, 0)
+    delta = timedelta(seconds=wsec)
+    time_str = "{:0>8}".format(str(datetime.timedelta(seconds=wsec)))
+
+    cprint(
+        "Mem: %.1f (mb), Time: %s"
+        % (
+            round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024, 1),
+            time_str,
+        ),
+        color="cyan",
+    )
+
+
+cli()
