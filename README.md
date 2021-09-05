@@ -1,10 +1,14 @@
 # unbun
 
+unbun - unbunde angular-vue-react app run it on py4web
+
+-----------------------------------------------------
+
 how to run  https://github.com/akveo/ngx-admin  on py4web ?
 
 cp unbun to ~/bin && chmod +x ~/bin/unbun 
 
-0 cd /home/w3p/set1/py4web/apps
+0 cd py4web/apps
 
 1 cp -a _scaffold ngx
 
@@ -19,8 +23,6 @@ cp unbun to ~/bin && chmod +x ~/bin/unbun
 The script takes a long time, 1 to 7 min.
 
 please wait
-
-that's all
 
 firefox localhost:8000/ngx
 
