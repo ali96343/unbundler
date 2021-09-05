@@ -519,7 +519,7 @@ class Env:
                             if not 'node_modules' in e:
                               print (e)
                 elif lx[0] == 'angular':
-                    print ( """ is feature of typescript compiler, you may set in tsconfig file like below,
+                    print ( """ feature of typescript compiler, you may set in tsconfig file like below,
                      "sourceMap": true|false """ )
                 elif lx[0] == 'react':
                      print ( """ "build": "GENERATE_SOURCEMAP=false react-scripts build",  """  )
@@ -848,7 +848,10 @@ class Des:
 
             if dst_file.endswith(".html"):
                 dst_file = dst_file.replace("/static/tte", "")
-            Z.for_test.add(rm_prefix(dst_file, p4w_pref))
+            test_url = rm_prefix(dst_file, p4w_pref)
+            #if test_url.endswith('.html'):
+            #   rm_suffix( test_url, '.html' )
+            Z.for_test.add( test_url )
 
             printProgressBar(i, files_count, postText=start)
 
@@ -996,9 +999,11 @@ publisher = Publisher(db, policy=ALLOW_ALL_POLICY)
 """
         Z.body = """
 @action('CTRL', method=["GET", "POST"] )
+@action('CTRL.html', method=["GET", "POST"] )
 @action('static/tte', method=["GET", "POST"] )
 @action('static/tte/', method=["GET", "POST"] )
 @action('static/tte/CTRL', method=["GET", "POST"] )
+@action('static/tte/CTRL.html', method=["GET", "POST"] )
 @action.uses( db, session, T, Template('VIEW', delimiters='QU1 QU2',) )
 #
 def CTRL(param=None):
