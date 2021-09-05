@@ -31,7 +31,7 @@ try:
     #    css_minify,
     #)
 except ImportError:
-    sys.exit("pip install bs4 jsbeautifier cssbeautifier lxml")
+    sys.exit("pip install bs4 jsbeautifier,cssbeautifier lxml")
 
 skip_entry = (
     ".",
@@ -54,8 +54,6 @@ node_files = []
 OPT = {}
 
 import gc
-import sys
-
 
 def get_obj_size(obj):
     # https://stackoverflow.com/questions/13530762/how-to-know-bytes-size-of-python-object-like-arrays-and-dictionaries-the-simp
@@ -1001,7 +999,7 @@ publisher = Publisher(db, policy=ALLOW_ALL_POLICY)
 @action('static/tte', method=["GET", "POST"] )
 @action('static/tte/', method=["GET", "POST"] )
 @action('static/tte/CTRL', method=["GET", "POST"] )
-@action.uses(Template('VIEW', delimiters='QU1 QU2',), db, session, T, )
+@action.uses( db, session, T, Template('VIEW', delimiters='QU1 QU2',) )
 #
 def CTRL(param=None):
    ctrl_info= "ctrl: CTRL, view: VIEW"
