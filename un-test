@@ -31,36 +31,36 @@ start_time = time.time()
 async def get_p4w_url(client, url):
     resp = await client.get(url)
     if resp.status_code != 200:
-        #sys.exit(f"stop! url error {url}")
+        # sys.exit(f"stop! url error {url}")
         return url
-    return '200'
+    return "ok"
+
 
 async def main():
- 
-    host='127.0.0.1'
-    port='8000'
 
-    if not isOpen( host, port):
+    host, port = "127.0.0.1", "8000"
+
+    if not isOpen(host, port):
         sys.exit("stop! run, pls, py4web")
 
     p4w_url = f"http://{host}:{port}"
 
     url_list = [f"{p4w_url}{e}" for e in read_urls()]
 
-    print ('len (url_list): ', len( url_list ))
-
     async with httpx.AsyncClient() as client:
 
-        tasks = []
-        for url in url_list:
-            tasks.append(asyncio.ensure_future(get_p4w_url(client, url)))
+        tasks = [ asyncio.ensure_future(get_p4w_url(client, url)) for url in url_list ]
 
         checked_result = await asyncio.gather(*tasks)
-        
-        bad_url = [ e  for e in checked_result  if e != '200' ]
-        print ('bad_url_lisr: ', bad_url)
+
+        bad_url = [e for e in checked_result if e != "ok"]
+
+        # report
+        print("len (url_list): ", len(url_list))
+        print("bad_url: ", bad_url)
+        print("len (bad_url): ", len(bad_url))
 
 
 asyncio.run(main())
 
-print("{:.3f} seconds".format( time.time() - start_time  ) )
+print("{:.3f} seconds".format(time.time() - start_time))
