@@ -7,6 +7,10 @@ import os, sys
 import socket
 
 
+# expected "spy-urls.txt" in tte dir and running py4web
+# 
+
+
 def isOpen(ip, port):
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -55,12 +59,15 @@ async def main():
 
         bad_url = [e for e in checked_result if e != "ok"]
 
-        # report
-        print("len (url_list): ", len(url_list))
-        print("bad_url: ", bad_url)
-        print("len (bad_url): ", len(bad_url))
+        def report():
+            print ('   Test result')
+            print("len (url_list): ", len(url_list))
+            print("bad_url: ", bad_url)
+            print("len (bad_url): ", len(bad_url))
 
+        report()
 
 asyncio.run(main())
+diff = time.time() - start_time
+print(f'time = {diff:.2f} seconds')
 
-print("{:.3f} seconds".format(time.time() - start_time))
