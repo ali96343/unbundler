@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+
+
+import os, sys, re
+import pprint
+
+
+import json
+
+
+def read_maybe(fnm="spy-maybe-router.txt"):
+    try:
+        with open(fnm, "r") as f:
+            return [ e.strip()  for e in  f.readlines() ]
+    except:
+        sys.exit(f"stop! not found {fnm}")
+
+
+def rm_suffix(s, sub):
+    return s[: -len(sub)] if s.endswith(sub) else s
+
+
+
+def read_src_index(ind_fnm='spy-src-index.txt'):
+   
+    lx = read_maybe( fnm= ind_fnm  )
+    if len (lx):
+       #print (lx[0])
+       src_dir = rm_suffix( lx[0], '/index.html'  )
+       return src_dir
+    else:
+       sys.exit ( f'stop! empty {ind_fnm}'  )
+
+
+
+def find(base,):
+    hits = []
+    skip_entry = ()
+
+    def find_in_dir_subdir(direc):
+        # content = os.scandir(direc)
+        content = sorted(os.scandir(direc), key=lambda t: t.stat().st_mtime)
+        for entry in content:
+            if entry.name.lower().startswith(skip_entry):
+                if entry.is_dir():
+                    node_files.append(os.path.join(direc, entry.name + "/"))
+                else:
+                    node_files.append(os.path.join(direc, entry.name))
+                continue
+
+            if entry.is_file():
+                hits.append(os.path.join(direc, entry.name))
+
+            elif entry.is_dir():
+                try:
+                    find_in_dir_subdir(os.path.join(direc, entry.name))
+                except IOError:
+                    print("Permission error  " + os.path.join(direc, entry.name))
+                    continue
+                except UnicodeDecodeError:
+                    print("Could not resolve " + os.path.join(direc, entry.name))
+                    continue
+
+    find_in_dir_subdir(base)
+
+    return hits
+
+not_found_list = []
+
+def mygrep(pat, some_file):
+    lx = re.findall( re.escape(pat), some_file  )
+    if len(lx):
+        #print (lx,' ', some_file)
+        return True
+    return False
+
+
+
+wdir = '/home/w3p/set4/py4web/apps/ngx/static/tte/ngx-admin/src'
+wdir =  read_src_index() 
+
+app_files= find(wdir)
+
+pat_list = read_maybe()
+
+print ( pat_list )
+res_dict = {}
+
+for e in pat_list:
+
+     res_bool = []
+
+     for ee in app_files:
+        res = mygrep( e, ee  ) 
+        res_bool.append( res )
+        if res:
+           if not e  in res_dict.keys():
+              res_dict[ e] = [ee]
+           else:
+              res_dict[ e].append( ee ) 
+                    
+
+
+     if not any(res_bool ):
+        not_found_list.append( e  )
+     
+#print ( not_found_list )
+
+found_list = [ e for e in pat_list if e not in not_found_list  ]
+
+#print ( found_list )
+
+
+#print ( pprint.pprint(  res_dict) )
+
+with open('spy-ts-output.txt', 'wt') as out:
+    pprint.pprint( res_dict , stream=out)
+    print ('wrote: spy-ts-output.txt' )
+
+print(json.dumps( res_dict  , indent=4, sort_keys=True))
+
+#with open('data.json', 'w') as f:
+#    json.dump(data, f)
+
+
+# https://stackoverflow.com/questions/12309269/how-do-i-write-json-data-to-a-file
+
+
+print ('-'*50)
+
+
+
+
+
+def select_app_files(filesdb):
+    for e in filesdb :
+         if e.endswith('.json'):
+            print(e )
+         if 'app.component.ts' in e :
+            print (e)
+         if 'app.module.ts' in e :
+            print (e)
+         if 'main.ts' in e :
+            print (e)
+         if 'polyfills.ts' in e :
+            print (e)
+         if 'index.html' in e :
+            print (e)
+         if 'tsconfig.json' in e :
+            print (e)
+         if 'angular.json' in e :
+            print (e)
+         if e.endswith('.ts'):
+            print (f"--- {e}")
+
+
+
+select_app_files(app_files)

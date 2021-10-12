@@ -141,7 +141,7 @@ def printProgressBar(i, max, postText="working ..."):
             else ""
         )
         wait = (
-            "; {} sec to go".format(str(int(round(wsec / i * (max - i), 0))))
+            "; ~{} sec to go".format(str(int(round(wsec / i * (max - i), 0))))
             if wsec > 0.0 and i > 0
             else ""
         )
@@ -257,7 +257,7 @@ def to_str(some):
     return some
 
 
-def put_file(str_data, file_name, mode="w"):
+def str2file(str_data, file_name, mode="w"):
     with open(file_name, mode) as f:
         f.write(str_data)
     return file_name
@@ -521,6 +521,9 @@ class Env:
                 elif lx[0] == 'angular':
                     print ( """ feature of typescript compiler, you may set in tsconfig file like below,
                      "sourceMap": true|false """ )
+                    lx_tsconf = find_file(Z.cwd, "tsconfig.json")
+                    src_tsconf = [ e for e in lx_tsconf if not  'node_modules' in e ]
+                    cprint (f'tsconfig: {src_tsconf}','yellow')
                 elif lx[0] == 'react':
                      print ( """ "build": "GENERATE_SOURCEMAP=false react-scripts build",  """  )
                      print ( """ create a file called .env and add to it: GENERATE_SOURCEMAP=false""" )
@@ -531,6 +534,9 @@ class Env:
 
     def init_dirs(Z,):
         lx = find_file(Z.cwd, "index.html")
+        src_index = [ e for e in lx if  'src/index.html' in e ]
+        cprint(f'src/index.html: {src_index}', 'yellow')
+        str2file( '\n'.join( src_index ), 'spy-src-index.txt' )
         for e in lx:
             if any([d in e for d in ("/dist/", "/build/", "/built/")]):
                 Z.dist_index = e
@@ -730,7 +736,7 @@ class Des:
         if len(Z.env.git_src):
             slines = re.sub(
                 "</title>",
-                "</title>\\n  <!-- py4web app from %s -->" % Z.env.git_src,
+                "</title>\\n  <!-- ( https://github.com/ali96343/unbundler ) py4web app from %s -->" % Z.env.git_src,
                 slines,
                 re.DOTALL,
             )
@@ -892,19 +898,26 @@ class Des:
 
     def mk_test_file(Z,):
         fnm = "spy-urls.txt"  # os.path.basename(__file__)
-        put_file("\n".join(Z.for_test), fnm)
+        str2file("\n".join(Z.for_test), fnm)
         cprint(f"wrote {len(Z.for_test)} urls to: {fnm}", "yellow")
+
+    def out_maybe_router(Z,):
+        #check_list = [ f'grep -r {e} .'   for e in Z.maybe_router ]
+        str2file(str('\n'.join(  Z.maybe_router  )), 'spy-maybe-router.txt')
 
     def __call__(Z,):
         Z.mk_un_files()
         print("len ( Z.maybe_router )", len(Z.maybe_router))
         cprint("maybe route suffix or prefix!", color="yellow")
+        Z.out_maybe_router()
         l = list(Z.maybe_router)
         # lsorted = sorted(l,key=lambda x: int(len(x)))
         lsorted = sorted(l, key=lambda x: int(len(x.split("/")[1])))
         # lsorted = sorted(l,key=lambda x: int(len(os.path.splitext(x)[0])))
         print(lsorted)
         print("len( Z.maybe_external )", len(Z.maybe_external))
+        str2file( str( '\n'.join(Z.maybe_external) ), 'spy-maybe-extenal.txt'  )
+        cprint (f'wrote {len(Z.maybe_external)} urls to: spy-maybe-extenal.txt', 'yellow')
         print("Z.new_counter: ", Z.new_counter)
         print("Z.skip_space_counter: ", Z.skip_space_counter)
         # print("len(Z.sr_cache): ", len(Z.sr_cache))
@@ -965,7 +978,7 @@ if not db(db.auth_user).count():
 
     def __call__(Z,):
         tbl_text = Z.gen_test_tbl("string", "string", "string")
-        put_file(Z.user_table + tbl_text, Z.path)
+        str2file(Z.user_table + tbl_text, Z.path)
 
 
 class Ctrl:
@@ -988,7 +1001,13 @@ from py4web.core import Template, Reloader
 
 from .common import db, session, T, cache, authenticated, unauthenticated, auth
 from .settings import APP_NAME
-from py4web.core import bottle
+
+try:
+   import ombott as bottle
+except ImportError:
+   import bottle
+
+
 
 ## exposes services necessary to access the db.thing via ajax
 publisher = Publisher(db, policy=ALLOW_ALL_POLICY)
@@ -1004,7 +1023,6 @@ publisher = Publisher(db, policy=ALLOW_ALL_POLICY)
         Z.body = """
 @action('CTRL', method=["GET", "POST"] )
 @action('CTRL.html', method=["GET", "POST"] )
-@action('static/tte', method=["GET", "POST"] )
 @action('static/tte/CTRL', method=["GET", "POST"] )
 @action('static/tte/CTRL.html', method=["GET", "POST"] )
 @action.uses( db, session, T, Template('VIEW', delimiters='QU1 QU2',) )
@@ -1155,7 +1173,7 @@ def error404(error):
             copy_with_dirs(src, os.path.join(Z.view.path, bn))
         controllers.append(s_and_r(Z.bottle, {"APPNM": Z.env.app_name}))
         controllers.append(s_and_r(Z.rest, {"APPNM": Z.env.app_name}))
-        put_file("\n".join(controllers), Z.path)
+        str2file("\n".join(controllers), Z.path)
 
 
 class Linker:
