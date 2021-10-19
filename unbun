@@ -1080,6 +1080,7 @@ def api(tablename, rec_id=None):
 
 """
 
+
         Z.bottle = """
 
 #Glb= {'debug': True, 'my_app_name': APP_NAME, 'tte_path': '/static/tte'}
